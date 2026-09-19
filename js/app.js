@@ -1,11 +1,11 @@
 import { loadTasks, saveTasks, clearStoredTasks } from './storage.js';
 import { addTask, updateTask, toggleTask, deleteTask, bulkDelete } from './tasks.js';
 import { deriveStats } from './filters.js';
-import { initNavigation, onNavigate, navigate, renderSidebar, renderMobileNav } from './navigation.js';
+import { getActiveView, onViewChange, navigate } from './navigation.js';
 import { initTheme, setTheme, loadAppSettings, saveAppSettings } from './theme.js';
 import { initModal, showTaskEditor, showTaskDetails, confirmDialog, closeModal, trapEscape } from './modal.js';
 import { renderDashboard, renderAllTasks, renderToday, renderUpcoming, renderCompleted, renderSettings } from './views.js';
-import { formatLongDate } from './utils.js';
+import { updateShell, updateViews } from './ui.js';
 
 const seedTasks=[
  {title:'Review Figma design system tokens',description:'Harmonize the component system with semantic color definitions and confirm dark-mode elevation surfaces.',priority:'high',category:'Design',dueDate:'',dueTime:'11:30'},
@@ -33,21 +33,15 @@ function prepareSeed(){
   return seedTasks.map((t,i)=>{ const copy={...t}; if(i===0||i===1||i===2||i===3||i===4||i===5){ const d=new Date(base); copy.dueDate=d.toISOString().slice(0,10); } else if(i===6){const d=new Date(base);d.setDate(d.getDate()-2);copy.dueDate=d.toISOString().slice(0,10);} else if(i===7){const d=new Date(base);d.setDate(d.getDate()-1);copy.dueDate=d.toISOString().slice(0,10);} else if(i===8){const d=new Date(base);d.setDate(d.getDate()+1);copy.dueDate=d.toISOString().slice(0,10);} else if(i===9){const d=new Date(base);d.setDate(d.getDate()+2);copy.dueDate=d.toISOString().slice(0,10);} else if(i===10){const d=new Date(base);d.setDate(d.getDate()+5);copy.dueDate=d.toISOString().slice(0,10);} else if(i===11){const d=new Date(base);d.setDate(d.getDate()+7);copy.dueDate=d.toISOString().slice(0,10);} else if(i===12){const d=new Date(base);d.setDate(d.getDate()+14);copy.dueDate=d.toISOString().slice(0,10);} else {copy.dueDate='';} return copy; });
 }
 
-const state={tasks:loadTasks(prepareSeed()), route:initNavigation(), filters:{status:'all',priority:'all',category:'all',query:'',sort:'due-asc'}, settings:loadAppSettings()};
+const state={tasks:loadTasks(prepareSeed()), route:getActiveView(), filters:{status:'all',priority:'all',category:'all',query:'',sort:'due-asc'}, settings:loadAppSettings()};
 initTheme(); initModal(); trapEscape();
 const sidebar=document.getElementById('sidebar'); const topbar=document.getElementById('topbar'); const main=document.getElementById('main'); const mobileNav=document.getElementById('mobile-nav');
 
 function persist(next){ state.tasks=next; saveTasks(next); }
 function toast(message,type='success'){ const root=document.getElementById('toast-root'); const el=document.createElement('div'); el.className=`toast ${type}`; el.innerHTML=`<span class="material-symbols-outlined">${type==='error'?'error':'check_circle'}</span><span>${message}</span>`; root.append(el); setTimeout(()=>el.remove(),2800); }
-function refreshShell(){ sidebar.innerHTML=renderSidebar(state.tasks,state.route); mobileNav.innerHTML=renderMobileNav(state.route); topbar.innerHTML=`<div class="top-search"><span class="material-symbols-outlined search-icon">search</span><input id="global-search" class="search-input" value="${state.filters.query.replace(/&/g,'&amp;').replace(/"/g,'&quot;')}" placeholder="Search tasks, tags, projects..." aria-label="Global task search"><span class="kbd">⌘K</span></div><div class="topbar-actions"><button class="btn secondary" data-action="toggle-filter"><span class="material-symbols-outlined">filter_list</span>Filter</button><div class="top-date"><span class="material-symbols-outlined" style="font-size:16px">calendar_today</span>${formatLongDate()}</div><button class="icon-btn" data-action="test-alert" aria-label="Notifications"><span class="material-symbols-outlined">notifications</span></button><button class="avatar" style="width:32px;height:32px;border:1px solid var(--border);font-size:10px" aria-label="Profile">AM</button></div>`; }
-function render(){ refreshShell();
-  if(state.route==='dashboard') main.innerHTML=renderDashboard(state.tasks);
-  else if(state.route==='all-tasks') main.innerHTML=renderAllTasks(state.tasks,state);
-  else if(state.route==='today') main.innerHTML=renderToday(state.tasks);
-  else if(state.route==='upcoming') main.innerHTML=renderUpcoming(state.tasks);
-  else if(state.route==='completed') main.innerHTML=renderCompleted(state.tasks,state);
-  else main.innerHTML=renderSettings(state.settings);
-  bindView(); main.focus();
+function render({focus=true}={}){ updateShell({sidebar,mobileNav,topbar},state);
+  updateViews(main,state,{renderDashboard,renderAllTasks,renderToday,renderUpcoming,renderCompleted,renderSettings},{focus});
+  bindView();
 }
 function saveAndRender(next,msg){ persist(next); render(); if(msg) toast(msg); }
 function getTask(id){ return state.tasks.find(t=>t.id===id); }
@@ -71,7 +65,7 @@ function bindView(){
   document.querySelectorAll('[data-action="delete-workspace"]').forEach(el=>el.addEventListener('click',()=>confirmDialog({title:'Delete workspace data?',message:'This will clear every saved task from localStorage for this app. The page itself will remain installed.',confirmLabel:'Delete all tasks',danger:true,onConfirm:()=>{clearStoredTasks();state.tasks=[];render();toast('Workspace data deleted.');}})));
   document.querySelectorAll('[data-theme-choice]').forEach(el=>el.addEventListener('click',()=>{const choice=el.dataset.themeChoice;if(choice==='system'){const system=matchMedia('(prefers-color-scheme: light)').matches?'light':'dark';setTheme(system);toast(`System theme applied (${system}).`);}else{setTheme(choice);toast(`${choice==='light'?'Light':'Dark'} mode applied.`);}render();}));
   document.querySelectorAll('[data-toggle-setting]').forEach(el=>el.addEventListener('click',()=>{const key=el.dataset.toggleSetting;state.settings[key]=!state.settings[key];saveAppSettings(state.settings);render();}));
-  const qa=document.getElementById('quick-add-form'); qa?.addEventListener('submit',e=>{e.preventDefault(); const input=document.getElementById('quick-add-input'); const title=input.value.trim(); if(!title){toast('Enter a task title first.','error');input.focus();return;} const due=new Date().toISOString().slice(0,10);saveAndRender(addTask(state.tasks,{title,description:'',priority:'medium',category:'Product',dueDate:due,dueTime:''}),'Task captured for today.');});
+  document.querySelectorAll('[data-quick-add-form]').forEach(qa=>qa.addEventListener('submit',e=>{e.preventDefault(); const input=qa.querySelector('[data-quick-add-input]'); const title=input.value.trim(); if(!title){toast('Enter a task title first.','error');input.focus();return;} const due=new Date().toISOString().slice(0,10);saveAndRender(addTask(state.tasks,{title,description:'',priority:'medium',category:'Product',dueDate:due,dueTime:''}),'Task captured for today.');}));
   const global=document.getElementById('global-search'); global?.addEventListener('input',e=>{const value=e.target.value; state.filters.query=value; const routeBefore=state.route; if(routeBefore!=='all-tasks'&&routeBefore!=='completed'&&value.trim()){navigate('all-tasks'); return;} render(); const restored=document.getElementById('global-search'); if(restored){restored.focus(); restored.setSelectionRange(value.length,value.length);} });
   const allSearch=document.getElementById('all-search'); allSearch?.addEventListener('input',e=>{state.filters.query=e.target.value;render();});
   const completedSearch=document.getElementById('completed-search'); completedSearch?.addEventListener('input',e=>{state.filters.query=e.target.value;render();});
@@ -83,7 +77,7 @@ function bindView(){
   document.querySelectorAll('[data-action="reset-filters"], [data-action="reset-completed"]').forEach(el=>el.addEventListener('click',()=>{state.filters={status:'all',priority:'all',category:'all',query:'',sort:'due-asc'};render();}));
 }
 
-onNavigate(route=>{state.route=route;state.filters.query='';render();});
+onViewChange(route=>{state.route=route;state.filters.query='';render();});
 window.addEventListener('keydown',e=>{
   if((e.metaKey||e.ctrlKey)&&e.key.toLowerCase()==='k'){e.preventDefault(); document.getElementById('global-search')?.focus();}
 });

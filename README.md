@@ -4,7 +4,7 @@ TaskFlow is a modular, responsive single-page to-do application rebuilt from the
 
 ## Features
 
-- True SPA navigation using hash routes: Dashboard, All Tasks, Today, Upcoming, Completed, Settings
+- Accessible, show/hide SPA navigation for Dashboard, All Tasks, Today, Upcoming, Completed, and Settings
 - Create, edit, delete, view details, complete and reopen tasks
 - Priority, category, due date and due time support
 - Case-insensitive search across task title, description and category
@@ -40,6 +40,7 @@ css/
 js/
   app.js
   navigation.js
+  ui.js
   tasks.js
   filters.js
   search.js
@@ -55,7 +56,20 @@ README.md
 
 ## How the SPA works
 
-`index.html` is the only HTML document. Navigation changes the hash (`#dashboard`, `#all-tasks`, etc.) and `app.js` re-renders the appropriate view into the single `<main>` mount point without reloading the document. The sidebar and top bar are shared shell components.
+`index.html` is the only HTML document. `ui.js` renders each task view as its own `<section>` inside the shared `<main>` mount point. `navigation.js` exposes the single `renderView(viewName)` function that shows the requested section, hides the others, and synchronizes the navigation controls without changing the URL. The sidebar and top bar are shared shell components.
+
+Navigation buttons use `data-view` rather than hash links. `bindNavigation()` wires click, Enter/Space, Arrow-key, Home, and End navigation for every button container:
+
+```html
+<button
+  type="button"
+  class="nav-link"
+  data-view="completed"
+  aria-controls="view-completed"
+  aria-current="false">
+  Completed
+</button>
+```
 
 ## Data persistence
 
